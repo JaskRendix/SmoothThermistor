@@ -1,10 +1,14 @@
+# Classes / Types
 SmoothThermistor    KEYWORD1
 ThermistorConfig    KEYWORD1
 AdcResolution       KEYWORD1
 FilterMode          KEYWORD1
 
+# Methods
 use_aref            KEYWORD2
 temperature         KEYWORD2
 is_stable           KEYWORD2
 last_noise_stddev   KEYWORD2
 last_noise_variance KEYWORD2
+last_filtered       KEYWORD2
+tick                KEYWORD2
