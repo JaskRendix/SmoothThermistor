@@ -88,7 +88,7 @@ std::uint16_t seq_stable(std::uint8_t) { return g_seq_stable.next(); }
   for (std::uint32_t i = 0; i < (static_cast<std::uint32_t>(samples) *         \
                                  static_cast<std::uint32_t>(oversample));      \
        ++i) {                                                                  \
-    (inst).tick();                                                             \
+    (void)(inst).tick();                                                       \
     delay(1);                                                                  \
   }
 
@@ -400,7 +400,7 @@ TEST_CASE("Stable signal is detected as stable") {
   SmoothThermistor therm(0, cfg, seq_stable);
 
   for (int i = 0; i < 20; ++i) {
-    therm.tick();
+    (void)therm.tick();
     delay(1);
   }
 

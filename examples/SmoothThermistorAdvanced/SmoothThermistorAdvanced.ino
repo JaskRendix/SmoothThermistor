@@ -1,30 +1,30 @@
 #include <SmoothThermistor.h>
 
-smooththermistor::ThermistorConfig cfg;
-smooththermistor::SmoothThermistor therm(A0, cfg);
+using namespace smooththermistor;
 
-void setup() {
-  Serial.begin(9600);
+ThermistorConfig cfg{.samples = 20,
+                     .oversample_factor = 4,
+                     .adc_resolution = AdcResolution::bit12,
+                     .filter_mode = FilterMode::moving_average,
+                     .enable_noise_estimation = true,
+                     .stability_threshold = 0.05};
 
-  cfg.adc_resolution = smooththermistor::AdcResolution::bit12;
-  cfg.samples = 20;
-  cfg.oversample_factor = 4;
-  cfg.filter_mode = smooththermistor::FilterMode::moving_average;
-  cfg.enable_noise_estimation = true;
-  cfg.stability_threshold = 0.05;
-}
+SmoothThermistor therm(A0, cfg);
+
+void setup() { Serial.begin(9600); }
 
 void loop() {
-  double t = therm.temperature();
+  const double t = therm.temperature();
 
   Serial.print("Temperature = ");
-  Serial.println(t);
+  Serial.print(t, 2);
+  Serial.println(" °C");
 
   Serial.print("Stable = ");
-  Serial.println(therm.is_stable());
+  Serial.println(therm.is_stable() ? "yes" : "no");
 
   Serial.print("Noise stddev = ");
-  Serial.println(therm.last_noise_stddev());
+  Serial.println(therm.last_noise_stddev(), 3);
 
   delay(1000);
 }

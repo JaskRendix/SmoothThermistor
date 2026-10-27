@@ -1,13 +1,10 @@
 #include <SmoothThermistor.h>
 
-smooththermistor::ThermistorConfig cfg;
+smooththermistor::ThermistorConfig cfg{.stability_threshold = 0.05};
+
 smooththermistor::SmoothThermistor therm(A0, cfg);
 
-void setup() {
-  Serial.begin(9600);
-
-  cfg.stability_threshold = 0.05;
-}
+void setup() { Serial.begin(9600); }
 
 void loop() {
   double t = therm.temperature();

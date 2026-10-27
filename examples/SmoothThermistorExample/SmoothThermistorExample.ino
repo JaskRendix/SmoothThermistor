@@ -25,10 +25,10 @@
 
 #include <SmoothThermistor.h>
 
-// default configuration
+// Default configuration
 smooththermistor::ThermistorConfig cfg;
 
-// optional configuration changes
+// Optional configuration changes
 // cfg.adc_resolution = smooththermistor::AdcResolution::bit12;
 // cfg.samples = 16;
 // cfg.filter_mode = smooththermistor::FilterMode::moving_average;
@@ -40,8 +40,8 @@ smooththermistor::SmoothThermistor therm(A0, cfg);
 void setup() {
   Serial.begin(9600);
 
-  // use AREF when using the advanced circuit
-  therm.use_aref(true);
+  // Uncomment when using the AREF circuit.
+  // therm.use_aref(true);
 }
 
 void loop() {
