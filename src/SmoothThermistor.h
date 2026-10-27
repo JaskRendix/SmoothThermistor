@@ -12,11 +12,20 @@
 
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 
 namespace smooththermistor {
 
-enum class AdcResolution : std::uint8_t { bit10 = 10, bit12 = 12 };
+enum class AdcResolution : std::uint8_t {
+  bit10 = 10,
+  bit12 = 12
+};
+
+constexpr std::uint32_t adc_max(AdcResolution resolution) {
+  return (std::uint32_t{1} <<
+          static_cast<std::uint8_t>(resolution)) - 1;
+}
 
 enum class FilterMode : std::uint8_t {
   none,
@@ -26,7 +35,7 @@ enum class FilterMode : std::uint8_t {
 };
 
 struct LookupEntry {
-  double adc_value;
+  std::uint16_t adc_value;
   double temperature;
 };
 
@@ -55,28 +64,49 @@ struct ThermistorConfig {
   bool enable_noise_estimation = false;
   double stability_threshold = 0.5;
 
-  std::uint32_t series_resistance = 10000;
+  std::uint16_t series_resistance = 10000;
+
+  bool validate() const {
+    const bool lookup_ok =
+        !use_lookup_table ||
+        (lookup_table != nullptr && lookup_size > 0);
+
+    const bool model_ok =
+        use_full_steinhart
+            ? (sh_a != 0.0 || sh_b != 0.0 || sh_c != 0.0)
+            : (beta_coefficient > 0.0);
+
+    return samples > 0 &&
+           oversample_factor > 0 &&
+           series_resistance > 0 &&
+           nominal_resistance > 0.0 &&
+           lookup_ok &&
+           model_ok;
+  }
 };
 
 using AdcReader = std::uint16_t (*)(std::uint8_t);
 
 class SmoothThermistor {
 public:
-  static constexpr std::size_t history_size_ = 16;
+  static constexpr std::size_t default_history_size = 16;
 
-  explicit SmoothThermistor(std::uint8_t analog_pin,
-                            const ThermistorConfig &config,
-                            AdcReader adc_reader = nullptr);
+  explicit SmoothThermistor(std::uint8_t analog_pin);
+
+  explicit SmoothThermistor(
+      std::uint8_t analog_pin,
+      const ThermistorConfig &config,
+      AdcReader adc_reader = nullptr);
 
   void use_aref(bool enabled);
 
-  bool tick();
-  double temperature();
+  [[nodiscard]] bool tick();
+  [[nodiscard]] double temperature();
 
-  bool is_stable() const;
-  double last_noise_stddev() const;
-  double last_noise_variance() const;
-  double last_filtered() const;
+  [[nodiscard]] bool is_stable() const;
+  [[nodiscard]] double last_noise_stddev() const;
+  [[nodiscard]] double last_noise_variance() const;
+  [[nodiscard]] double last_filtered() const;
 
 private:
   double read_average_adc_blocking() const;
@@ -86,7 +116,7 @@ private:
   void update_history(double temp);
   void update_noise_stats();
   void update_stability();
-  double lookup_temperature(double adc_value) const;
+  double lookup_temperature(std::uint16_t adc_value) const;
 
   std::uint8_t analog_pin_;
   ThermistorConfig config_;
@@ -97,7 +127,7 @@ private:
   std::uint32_t accumulated_adc_sum_ = 0;
   std::uint32_t sample_counter_ = 0;
 
-  double temperature_history_[history_size_]{};
+  double temperature_history_[default_history_size]{};
   std::size_t history_index_ = 0;
   bool history_filled_ = false;
 
