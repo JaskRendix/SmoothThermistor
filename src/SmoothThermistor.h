@@ -17,14 +17,10 @@
 
 namespace smooththermistor {
 
-enum class AdcResolution : std::uint8_t {
-  bit10 = 10,
-  bit12 = 12
-};
+enum class AdcResolution : std::uint8_t { bit10 = 10, bit12 = 12 };
 
 constexpr std::uint32_t adc_max(AdcResolution resolution) {
-  return (std::uint32_t{1} <<
-          static_cast<std::uint8_t>(resolution)) - 1;
+  return (std::uint32_t{1} << static_cast<std::uint8_t>(resolution)) - 1;
 }
 
 enum class FilterMode : std::uint8_t {
@@ -68,20 +64,17 @@ struct ThermistorConfig {
 
   bool validate() const {
     const bool lookup_ok =
-        !use_lookup_table ||
-        (lookup_table != nullptr && lookup_size > 0);
+        !use_lookup_table || (lookup_table != nullptr && lookup_size > 0);
 
-    const bool model_ok =
-        use_full_steinhart
-            ? (sh_a != 0.0 || sh_b != 0.0 || sh_c != 0.0)
-            : (beta_coefficient > 0.0);
+    const bool model_ok = use_full_steinhart
+                              ? (sh_a != 0.0 || sh_b != 0.0 || sh_c != 0.0)
+                              : (beta_coefficient > 0.0);
 
-    return samples > 0 &&
-           oversample_factor > 0 &&
-           series_resistance > 0 &&
-           nominal_resistance > 0.0 &&
-           lookup_ok &&
-           model_ok;
+    const bool filter_ok = filter_mode != FilterMode::exponential ||
+                           (exp_alpha >= 0.0 && exp_alpha <= 1.0);
+
+    return samples > 0 && oversample_factor > 0 && series_resistance > 0 &&
+           nominal_resistance > 0.0 && lookup_ok && model_ok && filter_ok;
   }
 };
 
@@ -93,10 +86,9 @@ public:
 
   explicit SmoothThermistor(std::uint8_t analog_pin);
 
-  explicit SmoothThermistor(
-      std::uint8_t analog_pin,
-      const ThermistorConfig &config,
-      AdcReader adc_reader = nullptr);
+  explicit SmoothThermistor(std::uint8_t analog_pin,
+                            const ThermistorConfig &config,
+                            AdcReader adc_reader = nullptr);
 
   void use_aref(bool enabled);
 
@@ -116,7 +108,7 @@ private:
   void update_history(double temp);
   void update_noise_stats();
   void update_stability();
-  double lookup_temperature(std::uint16_t adc_value) const;
+  double lookup_temperature(double adc_value) const;
 
   std::uint8_t analog_pin_;
   ThermistorConfig config_;

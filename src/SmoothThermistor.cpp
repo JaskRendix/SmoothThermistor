@@ -10,11 +10,6 @@
  * Licensed under the MIT License.
  */
 
-/*
- * This file is part of SmoothThermistor.
- * Licensed under the MIT License.
- */
-
 #include "SmoothThermistor.h"
 #include "Arduino.h"
 
@@ -24,12 +19,17 @@
 
 namespace smooththermistor {
 
+SmoothThermistor::SmoothThermistor(std::uint8_t analog_pin)
+    : SmoothThermistor(analog_pin, ThermistorConfig{}, nullptr) {}
+
 SmoothThermistor::SmoothThermistor(std::uint8_t analog_pin,
                                    const ThermistorConfig &config,
                                    AdcReader adc_reader)
-    : analog_pin_{analog_pin}, config_{config},
+    : analog_pin_{analog_pin},
+      config_{config.validate() ? config : ThermistorConfig{}},
       adc_reader_{adc_reader ? adc_reader : ::analogRead} {
-  std::fill(temperature_history_, temperature_history_ + history_size_, 0.0);
+  std::fill(temperature_history_, temperature_history_ + default_history_size,
+            0.0);
 }
 
 void SmoothThermistor::use_aref(bool enabled) {
@@ -40,7 +40,7 @@ void SmoothThermistor::use_aref(bool enabled) {
 }
 
 /* -------------------------------------------------------------------------
- * NON‑BLOCKING ENGINE
+ * NON-BLOCKING ENGINE
  * ------------------------------------------------------------------------- */
 bool SmoothThermistor::tick() {
   const std::uint32_t now = millis();
@@ -85,11 +85,12 @@ bool SmoothThermistor::tick() {
       return true;
     }
   }
+
   return false;
 }
 
 /* -------------------------------------------------------------------------
- * SYNCHRONOUS DROP‑IN MODE
+ * SYNCHRONOUS DROP-IN MODE
  * ------------------------------------------------------------------------- */
 double SmoothThermistor::temperature() {
   const double avg_adc = read_average_adc_blocking();
@@ -120,12 +121,15 @@ double SmoothThermistor::temperature() {
  * GETTERS
  * ------------------------------------------------------------------------- */
 bool SmoothThermistor::is_stable() const { return stable_; }
+
 double SmoothThermistor::last_noise_stddev() const {
   return last_noise_stddev_;
 }
+
 double SmoothThermistor::last_noise_variance() const {
   return last_noise_variance_;
 }
+
 double SmoothThermistor::last_filtered() const { return last_filtered_; }
 
 /* -------------------------------------------------------------------------
@@ -150,11 +154,14 @@ double SmoothThermistor::read_average_adc_blocking() const {
  * ADC → RESISTANCE
  * ------------------------------------------------------------------------- */
 double SmoothThermistor::adc_to_resistance(double adc_value) const {
-  const auto bits = static_cast<unsigned>(config_.adc_resolution);
-  const double max_adc = static_cast<double>((1UL << bits) - 1UL);
+  const double max_adc = static_cast<double>(adc_max(config_.adc_resolution));
 
   if (adc_value <= 0.0)
     return static_cast<double>(config_.series_resistance) * 1e6;
+
+  // Avoid zero resistance, which would make log(R) invalid.
+  if (adc_value >= max_adc)
+    return 1.0;
 
   return static_cast<double>(config_.series_resistance) *
          (max_adc / adc_value - 1.0);
@@ -178,7 +185,7 @@ double SmoothThermistor::compute_temperature_from_resistance(double R) const {
   const double inv_T0 =
       1.0 / (static_cast<double>(config_.nominal_temperature) + 273.15);
 
-  double steinhart =
+  const double steinhart =
       ln_ratio / static_cast<double>(config_.beta_coefficient) + inv_T0;
 
   return (1.0 / steinhart) - 273.15;
@@ -188,7 +195,8 @@ double SmoothThermistor::compute_temperature_from_resistance(double R) const {
  * FILTERING
  * ------------------------------------------------------------------------- */
 double SmoothThermistor::apply_filter(double raw_temp) {
-  const std::size_t count = history_filled_ ? history_size_ : history_index_;
+  const std::size_t count =
+      history_filled_ ? default_history_size : history_index_;
 
   if (count == 0) {
     last_filtered_ = raw_temp;
@@ -209,7 +217,7 @@ double SmoothThermistor::apply_filter(double raw_temp) {
   }
 
   case FilterMode::median: {
-    double buffer[history_size_];
+    double buffer[default_history_size];
     std::copy(temperature_history_, temperature_history_ + count, buffer);
     std::sort(buffer, buffer + count);
 
@@ -230,7 +238,7 @@ double SmoothThermistor::apply_filter(double raw_temp) {
  * ------------------------------------------------------------------------- */
 void SmoothThermistor::update_history(double temp) {
   temperature_history_[history_index_] = temp;
-  history_index_ = (history_index_ + 1) % history_size_;
+  history_index_ = (history_index_ + 1) % default_history_size;
 
   if (history_index_ == 0)
     history_filled_ = true;
@@ -240,7 +248,8 @@ void SmoothThermistor::update_history(double temp) {
  * NOISE
  * ------------------------------------------------------------------------- */
 void SmoothThermistor::update_noise_stats() {
-  const std::size_t count = history_filled_ ? history_size_ : history_index_;
+  const std::size_t count =
+      history_filled_ ? default_history_size : history_index_;
 
   if (count < 2) {
     last_noise_stddev_ = 0.0;
@@ -260,7 +269,6 @@ void SmoothThermistor::update_noise_stats() {
   }
 
   last_noise_variance_ = var_sum / static_cast<double>(count);
-
   last_noise_stddev_ = std::sqrt(last_noise_variance_);
 }
 
@@ -268,7 +276,8 @@ void SmoothThermistor::update_noise_stats() {
  * STABILITY
  * ------------------------------------------------------------------------- */
 void SmoothThermistor::update_stability() {
-  const std::size_t count = history_filled_ ? history_size_ : history_index_;
+  const std::size_t count =
+      history_filled_ ? default_history_size : history_index_;
 
   if (count < 2) {
     stable_ = false;
@@ -276,9 +285,9 @@ void SmoothThermistor::update_stability() {
   }
 
   const std::size_t latest =
-      (history_index_ + history_size_ - 1) % history_size_;
-
-  const std::size_t prev = (history_index_ + history_size_ - 2) % history_size_;
+      (history_index_ + default_history_size - 1) % default_history_size;
+  const std::size_t prev =
+      (history_index_ + default_history_size - 2) % default_history_size;
 
   const double delta =
       std::abs(temperature_history_[latest] - temperature_history_[prev]);
@@ -290,7 +299,9 @@ void SmoothThermistor::update_stability() {
  * LOOKUP TABLE (ADC → temperature)
  * ------------------------------------------------------------------------- */
 double SmoothThermistor::lookup_temperature(double adc_value) const {
-  auto cmp = [](const LookupEntry &e, double v) { return e.adc_value < v; };
+  auto cmp = [](const LookupEntry &entry, double value) {
+    return entry.adc_value < value;
+  };
 
   const LookupEntry *begin = config_.lookup_table;
   const LookupEntry *end = config_.lookup_table + config_.lookup_size;
@@ -304,9 +315,14 @@ double SmoothThermistor::lookup_temperature(double adc_value) const {
     return (end - 1)->temperature;
 
   const LookupEntry *prev = it - 1;
+  const std::uint16_t delta_adc =
+      static_cast<std::uint16_t>(it->adc_value - prev->adc_value);
+
+  if (delta_adc == 0)
+    return prev->temperature;
 
   const double frac =
-      (adc_value - prev->adc_value) / (it->adc_value - prev->adc_value);
+      (adc_value - prev->adc_value) / static_cast<double>(delta_adc);
 
   return prev->temperature + frac * (it->temperature - prev->temperature);
 }
